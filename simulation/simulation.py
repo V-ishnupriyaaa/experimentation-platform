@@ -280,7 +280,7 @@ def generate_assignments(conn, df_users, experiment_id="EXP_001", seed=42):
     conn.commit()
 
     # ── Sanity check — print split per tier ────────────────────
-    print("\n✓ Assignment split by tier:")
+    print("\n Assignment split by tier:")
     print(
         df_assignments.merge(
             df_users[["user_id", "spend_tier"]],
@@ -469,7 +469,7 @@ def generate_events(conn, df_users, df_assignments,
     conn.commit()
 
     # ── Sanity check ────────────────────────────────────────────
-    print("\n✓ Event counts by type:")
+    print("\n Event counts by type:")
     print(df_events["event_type"].value_counts())
 
     purchase_events = df_events[
@@ -482,13 +482,13 @@ def generate_events(conn, df_users, df_assignments,
         "variant"
     )["user_id"].nunique()
 
-    print("\n✓ Conversion rate by variant:")
+    print("\n Conversion rate by variant:")
     conversion = (
         purchasers_per_variant / total_users_per_variant
     ).round(4)
     print(conversion)
     print(
-        f"\n✓ Expected: treatment > control "
+        f"\n Expected: treatment > control "
         f"(ground truth lift baked in)"
     )
     return df_events
