@@ -30,6 +30,7 @@ def create_tables(conn):
             experiment_name         TEXT,
             start_date              TEXT,
             end_date                TEXT,
+            hypothesis              TEXT,
             control_description     TEXT,
             treatment_description   TEXT,
             primary_metric          TEXT,
@@ -190,6 +191,10 @@ def generate_experiment(conn):
         "experiment_name": "Search Ranking Algorithm V2 Test",
         "start_date": "2026-06-15",
         "end_date": "2026-06-29",
+        "hypothesis": (
+    "H0: New ranking algorithm has no effect on conversion rate. "
+    "H1: New ranking algorithm changes conversion rate (two-sided, alpha=0.05)."
+),
         "control_description": "Existing search ranking algorithm",
         "treatment_description": "New ML-based search ranking algorithm",
         "primary_metric": "conversion_rate",
@@ -213,6 +218,7 @@ def generate_experiment(conn):
         INSERT OR REPLACE INTO experiments VALUES (
             :experiment_id, :experiment_name,
             :start_date, :end_date,
+            :hypothesis,
             :control_description, :treatment_description,
             :primary_metric, :guardrail_metrics,
             :guardrail_thresholds, :mde, :alpha, :power, :status
