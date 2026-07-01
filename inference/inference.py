@@ -98,7 +98,119 @@ def check_srm(conn, experiment_id="EXP_001", alpha=0.05):
     return results
 
 
+def check_power(conn, experiment_id="EXP_001",
+                alpha=0.05, mde=0.005):
+    """
+    Post-hoc power analysis.
+    Calculates actual statistical power achieved given
+    the real sample size and observed metric variance —
+    rather than the planned/assumed values from Phase 1.
+    
+    A low achieved power means even a real effect may
+    have been missed — results should be treated with caution.
+    """
+    df_assignments = pd.read_sql(
+        f"SELECT * FROM assignments "
+        f"WHERE experiment_id = '{experiment_id}'",
+        conn
+    )
+    df_events = pd.read_sql(
+        f"SELECT * FROM events "
+        f"WHERE experiment_id = '{experiment_id}' "
+        f"AND event_type = 'purchase'",
+        conn
+    )
+    df_users = pd.read_sql("SELECT * FROM users", conn)
+
+    # ── Actual sample size per group ─────────────────────────
+    n_control = (
+        df_assignments["variant"] == "control"
+    ).sum()
+    n_treatment = (
+        df_assignments["variant"] == "treatment"
+    ).sum()
+    n_per_group = min(n_control, n_treatment)
+
+    # ── Observed conversion rate and variance ────────────────
+    # All assigned users — purchasers get 1, others get 0
+    df_all = df_assignments[["user_id", "variant"]].copy()
+    df_all["purchased"] = df_all["user_id"].isin(
+        df_events["user_id"]
+    ).astype(int)
+
+    conv_control = df_all[
+        df_all["variant"] == "control"
+    ]["purchased"].mean()
+    conv_treatment = df_all[
+        df_all["variant"] == "treatment"
+    ]["purchased"].mean()
+
+    # Pooled conversion rate for variance estimate
+    p_pooled = df_all["purchased"].mean()
+
+    # Variance of a binary metric = p * (1 - p)
+    sigma_sq = p_pooled * (1 - p_pooled)
+
+    # ── Planned sample size (from Phase 1 formula) ───────────
+    z_alpha = stats.norm.ppf(1 - alpha / 2)  # 1.96 for α=0.05
+    z_beta_planned = 0.842                    # 80% power
+
+    n_planned = (
+        2 * (z_alpha + z_beta_planned) ** 2 * sigma_sq
+    ) / (mde ** 2)
+
+    # ── Achieved power (flipped formula) ────────────────────
+    z_beta_achieved = (
+        np.sqrt(
+            (n_per_group * mde ** 2) /
+            (2 * sigma_sq)
+        ) - z_alpha
+    )
+    power_achieved = stats.norm.cdf(z_beta_achieved)
+
+    # ── Print report ─────────────────────────────────────────
+    print("=" * 55)
+    print("POST-HOC POWER ANALYSIS")
+    print("=" * 55)
+    print(f"Planned sample size per group: {n_planned:,.0f}")
+    print(f"Actual sample size per group:  {n_per_group:,}")
+    print(f"MDE:                           {mde*100:.1f}%")
+    print(f"Observed conversion (control): "
+          f"{conv_control:.4f}")
+    print(f"Observed conversion (treatment): "
+          f"{conv_treatment:.4f}")
+    print(f"Pooled variance (p*(1-p)):     "
+          f"{sigma_sq:.6f}")
+    print(f"\nPlanned power:    80.0%")
+    print(f"Achieved power:   {power_achieved*100:.1f}%")
+
+    if power_achieved < 0.80:
+        print(f"\n  UNDERPOWERED EXPERIMENT")
+        print(f"   Achieved power ({power_achieved*100:.1f}%) "
+              f"is below the 80% threshold.")
+        print(f"   Results should be treated with caution.")
+        print(f"   To achieve 80% power, you would need")
+        print(f"   ~{n_planned:,.0f} users per group")
+        print(f"   ({n_planned*2:,.0f} total).")
+    else:
+        print(f"\n Experiment adequately powered.")
+
+    print("=" * 55)
+
+    return {
+        "n_planned": n_planned,
+        "n_actual": n_per_group,
+        "power_achieved": round(power_achieved, 4),
+        "adequately_powered": power_achieved >= 0.80,
+        "conv_control": round(conv_control, 4),
+        "conv_treatment": round(conv_treatment, 4),
+        "mde": mde
+    }
+
 if __name__ == "__main__":
     conn = get_connection()
-    results = check_srm(conn)
+    srm_results = check_srm(conn)
+    print()
+    power_results = check_power(conn)
     conn.close()
+    
