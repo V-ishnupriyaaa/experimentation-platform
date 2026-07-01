@@ -5,6 +5,7 @@ from pathlib import Path
 import uuid
 from datetime import datetime, timedelta
 import random
+import json
 
 # ── Database connection ──────────────────────────────────────────
 DB_PATH = Path(__file__).parent.parent / "data" / "experiments.db"
@@ -176,10 +177,56 @@ def generate_users(conn, n_users=2100, seed=42):
     print(f"Generated {len(df_users)} users across 4 tiers")
     return df_users
 
+
+
+def generate_experiment(conn):
+    """
+    Insert one experiment record with all design decisions
+    locked in upfront — MDE, alpha, power, guardrails.
+    Prevents HARKing (Hypothesising After Results are Known).
+    """
+    experiment = {
+        "experiment_id": "EXP_001",
+        "experiment_name": "Search Ranking Algorithm V2 Test",
+        "start_date": "2026-06-15",
+        "end_date": "2026-06-29",
+        "control_description": "Existing search ranking algorithm",
+        "treatment_description": "New ML-based search ranking algorithm",
+        "primary_metric": "conversion_rate",
+        "guardrail_metrics": json.dumps([
+            "avg_review_score",
+            "seller_diversity_index",
+            "retention_rate"
+        ]),
+        "guardrail_thresholds": json.dumps([
+            0.05,   # max 5% drop in avg review score
+            0.10,   # max 10% drop in seller diversity
+            0.05    # max 5% drop in retention rate
+        ]),
+        "mde": 0.005,        # 0.5% minimum detectable effect
+        "alpha": 0.05,       # 5% significance level
+        "power": 0.80,       # 80% statistical power
+        "status": "completed"
+    }
+
+    conn.execute("""
+        INSERT OR REPLACE INTO experiments VALUES (
+            :experiment_id, :experiment_name,
+            :start_date, :end_date,
+            :control_description, :treatment_description,
+            :primary_metric, :guardrail_metrics,
+            :guardrail_thresholds, :mde, :alpha, :power, :status
+        )
+    """, experiment)
+    conn.commit()
+    print(f"Experiment '{experiment['experiment_name']}' created")
+    return experiment
+
+
 if __name__ == "__main__":
     conn = get_connection()
     create_tables(conn)
     df_users = generate_users(conn)
-    print(df_users.head())
     print(df_users["spend_tier"].value_counts())
+    experiment = generate_experiment(conn)
     conn.close()
