@@ -207,10 +207,243 @@ def check_power(conn, experiment_id="EXP_001",
         "mde": mde
     }
 
+def check_guardrails(conn, experiment_id="EXP_001",
+                     alpha=0.05):
+    """
+    Guardrail metric monitoring with multiple testing
+    correction (Bonferroni).
+    Three guardrail metrics derived/simulated from
+    available event data:
+    1. Cart-to-purchase rate (proxy for review/trust)
+    2. Seller diversity score (simulated)
+    3. Multi-day retention rate (from event timestamps)
+    If ANY guardrail is violated, experiment should NOT
+    be shipped regardless of primary metric result.
+    """
+    np.random.seed(42)
+
+    df_assignments = pd.read_sql(
+        f"SELECT * FROM assignments "
+        f"WHERE experiment_id = '{experiment_id}'",
+        conn
+    )
+    df_events = pd.read_sql(
+        f"SELECT * FROM events "
+        f"WHERE experiment_id = '{experiment_id}'",
+        conn
+    )
+
+    from statsmodels.stats.proportion import proportions_ztest
+
+    # ── Bonferroni correction ────────────────────────────────
+    n_tests = 3
+    alpha_corrected = alpha / n_tests
+    print(f"Bonferroni corrected α: "
+          f"{alpha_corrected:.4f} (original α={alpha})")
+
+    guardrail_results = {}
+
+    # ── Guardrail 1: Cart-to-purchase rate ──────────────────
+    cart_events = df_events[
+        df_events["event_type"] == "add_to_cart"
+    ][["user_id", "variant"]].copy()
+
+    purchase_users = set(
+        df_events[
+            df_events["event_type"] == "purchase"
+        ]["user_id"]
+    )
+
+    cart_events["purchased"] = cart_events[
+        "user_id"
+    ].isin(purchase_users).astype(int)
+
+    cart_control = cart_events[
+        cart_events["variant"] == "control"
+    ]["purchased"]
+    cart_treatment = cart_events[
+        cart_events["variant"] == "treatment"
+    ]["purchased"]
+
+    rate_control_cart   = cart_control.mean()
+    rate_treatment_cart = cart_treatment.mean()
+    relative_change_cart = (
+        (rate_treatment_cart - rate_control_cart) /
+        rate_control_cart
+    )
+
+    count1 = np.array([
+        cart_treatment.sum(), cart_control.sum()
+    ])
+    nobs1 = np.array([
+        len(cart_treatment), len(cart_control)
+    ])
+    z1, p1 = proportions_ztest(count1, nobs1)
+
+    guardrail_results["cart_to_purchase_rate"] = {
+        "control_rate":    round(rate_control_cart, 4),
+        "treatment_rate":  round(rate_treatment_cart, 4),
+        "relative_change": round(relative_change_cart, 4),
+        "p_value":         round(p1, 4),
+        "threshold":       -0.05,
+        "violated": (
+            relative_change_cart < -0.05 and
+            p1 < alpha_corrected
+        ),
+        "warning": (
+            relative_change_cart < -0.05 and
+            p1 >= alpha_corrected
+        )
+    }
+
+    # ── Guardrail 2: Seller diversity score ──────────────────
+    n_control   = (df_assignments["variant"] == "control").sum()
+    n_treatment = (df_assignments["variant"] == "treatment").sum()
+
+    diversity_control   = np.random.normal(
+        0.72, 0.15, n_control
+    ).clip(0, 1)
+    diversity_treatment = np.random.normal(
+        0.68, 0.15, n_treatment
+    ).clip(0, 1)
+
+    mean_div_control   = diversity_control.mean()
+    mean_div_treatment = diversity_treatment.mean()
+    relative_change_div = (
+        (mean_div_treatment - mean_div_control) /
+        mean_div_control
+    )
+
+    t2, p2 = stats.ttest_ind(
+        diversity_treatment, diversity_control
+    )
+
+    guardrail_results["seller_diversity"] = {
+        "control_rate":    round(mean_div_control, 4),
+        "treatment_rate":  round(mean_div_treatment, 4),
+        "relative_change": round(relative_change_div, 4),
+        "p_value":         round(p2, 4),
+        "threshold":       -0.10,
+        "violated": (
+            relative_change_div < -0.10 and
+            p2 < alpha_corrected
+        ),
+        "warning": (
+            relative_change_div < -0.10 and
+            p2 >= alpha_corrected
+        )
+    }
+
+    # ── Guardrail 3: Multi-day retention rate ────────────────
+    df_events_copy = df_events.copy()
+    df_events_copy["date"] = pd.to_datetime(
+        df_events_copy["event_timestamp"]
+    ).dt.date
+
+    user_dates = df_events_copy.groupby(
+        "user_id"
+    )["date"].nunique().reset_index()
+    user_dates.columns = ["user_id", "active_days"]
+
+    df_retention = df_assignments[
+        ["user_id", "variant"]
+    ].merge(user_dates, on="user_id", how="left")
+    df_retention["active_days"] = df_retention[
+        "active_days"
+    ].fillna(0)
+    df_retention["retained"] = (
+        df_retention["active_days"] > 1
+    ).astype(int)
+
+    ret_control = df_retention[
+        df_retention["variant"] == "control"
+    ]["retained"]
+    ret_treatment = df_retention[
+        df_retention["variant"] == "treatment"
+    ]["retained"]
+
+    rate_control_ret   = ret_control.mean()
+    rate_treatment_ret = ret_treatment.mean()
+    relative_change_ret = (
+        (rate_treatment_ret - rate_control_ret) /
+        rate_control_ret
+    )
+
+    count3 = np.array([
+        ret_treatment.sum(), ret_control.sum()
+    ])
+    nobs3 = np.array([
+        len(ret_treatment), len(ret_control)
+    ])
+    z3, p3 = proportions_ztest(count3, nobs3)
+
+    guardrail_results["retention_rate"] = {
+        "control_rate":    round(rate_control_ret, 4),
+        "treatment_rate":  round(rate_treatment_ret, 4),
+        "relative_change": round(relative_change_ret, 4),
+        "p_value":         round(p3, 4),
+        "threshold":       -0.05,
+        "violated": (
+            relative_change_ret < -0.05 and
+            p3 < alpha_corrected
+        ),
+        "warning": (
+            relative_change_ret < -0.05 and
+            p3 >= alpha_corrected
+        )
+    }
+
+    # ── Print report ─────────────────────────────────────────
+    print("\n" + "=" * 55)
+    print("GUARDRAIL MONITORING REPORT")
+    print("=" * 55)
+
+    any_violated = False
+    any_warning  = False
+
+    for metric, r in guardrail_results.items():
+        if r["violated"]:
+            status = "VIOLATED"
+            any_violated = True
+        elif r.get("warning"):
+            status = "WARNING"
+            any_warning = True
+        else:
+            status = "PASSED"
+
+        print(f"\n{metric}:")
+        print(f"  Control:         {r['control_rate']:.4f}")
+        print(f"  Treatment:       {r['treatment_rate']:.4f}")
+        print(f"  Relative change: "
+              f"{r['relative_change']*100:.2f}%")
+        print(f"  Threshold:       "
+              f"{r['threshold']*100:.0f}% max drop")
+        print(f"  p-value:         {r['p_value']:.4f}")
+        print(f"  Status:          {status}")
+
+    print("\n" + "=" * 55)
+    if any_violated:
+        print("GUARDRAIL VIOLATION DETECTED")
+        print("   DO NOT SHIP — investigate before proceeding")
+    elif any_warning:
+        print("GUARDRAIL WARNING")
+        print("   Threshold breached but not statistically")
+        print("   significant — experiment may be underpowered.")
+        print("   Proceed with caution. Monitor closely")
+        print("   post-ship if decision is made to launch.")
+    else:
+        print("ALL GUARDRAILS PASSED")
+        print("  Safe to proceed to statistical inference")
+    print("=" * 55)
+
+    return guardrail_results
+
+
 if __name__ == "__main__":
     conn = get_connection()
-    srm_results = check_srm(conn)
+    srm_results    = check_srm(conn)
     print()
-    power_results = check_power(conn)
+    power_results  = check_power(conn)
+    print()
+    guardrail_results = check_guardrails(conn)
     conn.close()
-    
