@@ -288,6 +288,209 @@ def generate_assignments(conn, df_users, experiment_id="EXP_001", seed=42):
     )
     return df_assignments
 
+def generate_events(conn, df_users, df_assignments, 
+                    experiment_id="EXP_001", seed=42):
+    """
+    Generate realistic event streams for each user during
+    the 14-day experiment window.
+    Funnel: search → click → add_to_cart → purchase
+    Treatment effect is heterogeneous by spend tier —
+    larger lift for exploratory users, smaller for habitual.
+    Ground truth baked in here — inference engine must
+    discover it independently in Phase 3/4.
+    """
+    np.random.seed(seed)
+    random.seed(seed)
+
+    experiment_start = datetime(2026, 6, 15)
+    experiment_end = datetime(2026, 6, 29)
+    experiment_duration = 14  # days
+
+    # ── Tier configuration — ground truth lives here ────────────
+    tier_config = {
+        "zero_history": {
+            "purchase_prob_control":   0.015,
+            "purchase_prob_treatment": 0.020,
+            "avg_order_value":         500,
+            "order_value_std":         200,
+        },
+        "low": {
+            "purchase_prob_control":   0.027,
+            "purchase_prob_treatment": 0.032,
+            "avg_order_value":         1200,
+            "order_value_std":         400,
+        },
+        "mid": {
+            "purchase_prob_control":   0.040,
+            "purchase_prob_treatment": 0.044,
+            "avg_order_value":         3000,
+            "order_value_std":         800,
+        },
+        "heavy": {
+            "purchase_prob_control":   0.055,
+            "purchase_prob_treatment": 0.058,
+            "avg_order_value":         8000,
+            "order_value_std":         2000,
+        },
+    }
+
+    # ── Funnel drop-off rates ───────────────────────────────────
+    CLICK_RATE        = 0.50   # 50% of searchers click
+    ADD_TO_CART_RATE  = 0.25   # 25% of clickers add to cart
+    DEVICE_TYPES      = ["mobile", "desktop", "tablet"]
+    DEVICE_WEIGHTS    = [0.65, 0.30, 0.05]
+
+    events = []
+
+    # ── Merge assignments with user tier info ───────────────────
+    df_merged = df_assignments.merge(
+        df_users[["user_id", "spend_tier", 
+                  "avg_days_to_purchase"]],
+        on="user_id"
+    )
+
+    for _, row in df_merged.iterrows():
+        tier    = row["spend_tier"]
+        variant = row["variant"]
+        config  = tier_config[tier]
+        device  = random.choices(
+            DEVICE_TYPES, weights=DEVICE_WEIGHTS
+        )[0]
+
+        # Purchase probability based on variant
+        purchase_prob = (
+            config["purchase_prob_treatment"]
+            if variant == "treatment"
+            else config["purchase_prob_control"]
+        )
+
+        # ── Event timing ────────────────────────────────────────
+        # Users enter experiment on Day 1
+        # Purchase timing anchored to avg_days_to_purchase
+        days_to_purchase = min(
+            round(np.random.normal(
+                row["avg_days_to_purchase"], 2
+            )),
+            experiment_duration - 1
+        )
+        days_to_purchase = max(0, days_to_purchase)
+
+        # ── SEARCH event — every user searches at least once ────
+        search_day = random.randint(0, 2)
+        search_time = experiment_start + timedelta(
+            days=search_day,
+            hours=random.randint(6, 22),
+            minutes=random.randint(0, 59)
+        )
+        events.append({
+            "event_id":         str(uuid.uuid4()),
+            "user_id":          row["user_id"],
+            "experiment_id":    experiment_id,
+            "variant":          variant,
+            "event_type":       "search",
+            "event_value":      None,
+            "event_timestamp":  search_time.strftime(
+                                    "%Y-%m-%d %H:%M:%S"),
+            "session_id":       str(uuid.uuid4()),
+            "device_type":      device,
+        })
+
+        # ── CLICK event — 50% of searchers ──────────────────────
+        if random.random() < CLICK_RATE:
+            click_time = search_time + timedelta(
+                minutes=random.randint(1, 30)
+            )
+            events.append({
+                "event_id":         str(uuid.uuid4()),
+                "user_id":          row["user_id"],
+                "experiment_id":    experiment_id,
+                "variant":          variant,
+                "event_type":       "click",
+                "event_value":      None,
+                "event_timestamp":  click_time.strftime(
+                                        "%Y-%m-%d %H:%M:%S"),
+                "session_id":       str(uuid.uuid4()),
+                "device_type":      device,
+            })
+
+            # ── ADD TO CART — 25% of clickers ───────────────────
+            if random.random() < ADD_TO_CART_RATE:
+                cart_time = click_time + timedelta(
+                    minutes=random.randint(1, 60)
+                )
+                events.append({
+                    "event_id":         str(uuid.uuid4()),
+                    "user_id":          row["user_id"],
+                    "experiment_id":    experiment_id,
+                    "variant":          variant,
+                    "event_type":       "add_to_cart",
+                    "event_value":      None,
+                    "event_timestamp":  cart_time.strftime(
+                                            "%Y-%m-%d %H:%M:%S"),
+                    "session_id":       str(uuid.uuid4()),
+                    "device_type":      device,
+                })
+
+        # ── PURCHASE event — tier + variant probability ──────────
+        if random.random() < purchase_prob:
+            purchase_time = experiment_start + timedelta(
+                days=days_to_purchase,
+                hours=random.randint(6, 22),
+                minutes=random.randint(0, 59)
+            )
+            order_value = max(
+                50,
+                round(np.random.normal(
+                    config["avg_order_value"],
+                    config["order_value_std"]
+                ), 2)
+            )
+            events.append({
+                "event_id":         str(uuid.uuid4()),
+                "user_id":          row["user_id"],
+                "experiment_id":    experiment_id,
+                "variant":          variant,
+                "event_type":       "purchase",
+                "event_value":      order_value,
+                "event_timestamp":  purchase_time.strftime(
+                                        "%Y-%m-%d %H:%M:%S"),
+                "session_id":       str(uuid.uuid4()),
+                "device_type":      device,
+            })
+
+    # ── Write to database ───────────────────────────────────────
+    df_events = pd.DataFrame(events)
+    df_events.to_sql(
+        "events", conn,
+        if_exists="replace", index=False
+    )
+    conn.commit()
+
+    # ── Sanity check ────────────────────────────────────────────
+    print("\n Event counts by type:")
+    print(df_events["event_type"].value_counts())
+
+    purchase_events = df_events[
+        df_events["event_type"] == "purchase"
+    ]
+    total_users_per_variant = df_assignments.groupby(
+        "variant"
+    )["user_id"].nunique()
+    purchasers_per_variant  = purchase_events.groupby(
+        "variant"
+    )["user_id"].nunique()
+
+    print("\nConversion rate by variant:")
+    conversion = (
+        purchasers_per_variant / total_users_per_variant
+    ).round(4)
+    print(conversion)
+    print(
+        f"\n Expected: treatment > control "
+        f"(ground truth lift baked in)"
+    )
+    return df_events
+
 if __name__ == "__main__":
     conn = get_connection()
     create_tables(conn)
@@ -295,4 +498,5 @@ if __name__ == "__main__":
     print(df_users["spend_tier"].value_counts())
     experiment = generate_experiment(conn)
     df_assignments = generate_assignments(conn, df_users)
+    df_events = generate_events(conn, df_users, df_assignments)
     conn.close()
