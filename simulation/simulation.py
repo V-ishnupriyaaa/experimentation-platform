@@ -228,6 +228,65 @@ def generate_experiment(conn):
     print(f"Experiment '{experiment['experiment_name']}' created")
     return experiment
 
+def generate_assignments(conn, df_users, experiment_id="EXP_001", seed=42):
+    """
+    Assign users to control or treatment using stratified
+    randomisation by spend tier.
+    Hash-based assignment guarantees sticky, deterministic splits.
+    Stratification prevents Simpson's Paradox by ensuring
+    each tier is split 50/50 across variants.
+    """
+    random.seed(seed)
+    experiment_start = datetime(2026, 6, 15)
+    assignments = []
+
+    # ── Stratified randomisation by spend tier ──────────────────
+    for tier in df_users["spend_tier"].unique():
+        tier_users = df_users[
+            df_users["spend_tier"] == tier
+        ].copy()
+
+        for _, user in tier_users.iterrows():
+            # Deterministic hash-based assignment
+            variant = (
+                "treatment"
+                if hash(user["user_id"]) % 2 == 0
+                else "control"
+            )
+
+            # Assignment timestamp — random time on experiment start day
+            hours_offset = random.randint(0, 23)
+            assigned_at = (
+                experiment_start +
+                timedelta(hours=hours_offset)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
+            assignments.append({
+                "assignment_id": str(uuid.uuid4()),
+                "user_id": user["user_id"],
+                "experiment_id": experiment_id,
+                "variant": variant,
+                "assigned_at": assigned_at,
+                "assignment_source": "random"
+            })
+
+    # ── Write to database ───────────────────────────────────────
+    df_assignments = pd.DataFrame(assignments)
+    df_assignments.to_sql(
+        "assignments", conn,
+        if_exists="replace", index=False
+    )
+    conn.commit()
+
+    # ── Sanity check — print split per tier ────────────────────
+    print("\n Assignment split by tier:")
+    print(
+        df_assignments.merge(
+            df_users[["user_id", "spend_tier"]],
+            on="user_id"
+        ).groupby(["spend_tier", "variant"]).size().unstack()
+    )
+    return df_assignments
 
 if __name__ == "__main__":
     conn = get_connection()
@@ -235,4 +294,5 @@ if __name__ == "__main__":
     df_users = generate_users(conn)
     print(df_users["spend_tier"].value_counts())
     experiment = generate_experiment(conn)
+    df_assignments = generate_assignments(conn, df_users)
     conn.close()
