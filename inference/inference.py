@@ -710,6 +710,194 @@ def demonstrate_peeking(conn, experiment_id="EXP_001",
         "n_simulations":     n_simulations
     }
 
+def run_cuped(conn, experiment_id="EXP_001", alpha=0.05):
+    """
+    CUPED: Controlled-experiment Using Pre-Experiment Data.
+    
+    Uses historical_revenue_30d as pre-experiment covariate
+    to reduce variance in conversion rate outcome metric.
+    
+    Demonstrates sensitivity improvement without increasing
+    sample size — used in production at Microsoft, Netflix,
+    and Booking.com.
+    
+    Formula: Y_cuped = Y - theta * (X - mean(X))
+    where theta = Cov(Y,X) / Var(X)
+    """
+    from statsmodels.stats.proportion import proportions_ztest
+
+    df_assignments = pd.read_sql(
+        f"SELECT * FROM assignments "
+        f"WHERE experiment_id = '{experiment_id}'",
+        conn
+    )
+    df_events = pd.read_sql(
+        f"SELECT * FROM events "
+        f"WHERE experiment_id = '{experiment_id}' "
+        f"AND event_type = 'purchase'",
+        conn
+    )
+    df_users = pd.read_sql("SELECT * FROM users", conn)
+
+    # ── Build analysis dataframe ─────────────────────────────
+    df = df_assignments[["user_id", "variant"]].merge(
+        df_users[["user_id", "historical_revenue_30d"]],
+        on="user_id"
+    )
+    df["purchased"] = df["user_id"].isin(
+        df_events["user_id"]
+    ).astype(int)
+
+    # ── Standard analysis (without CUPED) ───────────────────
+    control   = df[df["variant"] == "control"]
+    treatment = df[df["variant"] == "treatment"]
+
+    conv_control   = control["purchased"].mean()
+    conv_treatment = treatment["purchased"].mean()
+    var_standard   = df["purchased"].var()
+
+    count = np.array([
+        treatment["purchased"].sum(),
+        control["purchased"].sum()
+    ])
+    nobs = np.array([len(treatment), len(control)])
+    _, p_standard = proportions_ztest(count, nobs)
+
+    # ── CUPED adjustment ─────────────────────────────────────
+    # theta = Cov(Y, X) / Var(X)
+    # Calculated on combined data to avoid treatment leakage
+    X = df["historical_revenue_30d"].values
+    Y = df["purchased"].values
+
+    theta = np.cov(Y, X)[0, 1] / np.var(X)
+
+    # Apply CUPED adjustment
+    X_mean = X.mean()
+    df["purchased_cuped"] = (
+        df["purchased"] - theta * (
+            df["historical_revenue_30d"] - X_mean
+        )
+    )
+
+    # ── CUPED analysis ───────────────────────────────────────
+    control_cuped   = df[df["variant"] == "control"]
+    treatment_cuped = df[df["variant"] == "treatment"]
+
+    conv_control_cuped   = (
+        control_cuped["purchased_cuped"].mean()
+    )
+    conv_treatment_cuped = (
+        treatment_cuped["purchased_cuped"].mean()
+    )
+    var_cuped = df["purchased_cuped"].var()
+
+    # T-test on CUPED metric (no longer strictly binary)
+    t_stat, p_cuped = stats.ttest_ind(
+        treatment_cuped["purchased_cuped"],
+        control_cuped["purchased_cuped"]
+    )
+
+    # ── Variance reduction ───────────────────────────────────
+    variance_reduction = (
+        (var_standard - var_cuped) / var_standard
+    )
+
+    # ── Confidence intervals ─────────────────────────────────
+    diff_standard = conv_treatment   - conv_control
+    diff_cuped    = conv_treatment_cuped - conv_control_cuped
+
+    se_standard = np.sqrt(
+        conv_control * (1 - conv_control) / len(control) +
+        conv_treatment * (1 - conv_treatment) / len(treatment)
+    )
+    se_cuped = np.sqrt(
+        var_cuped / len(control) +
+        var_cuped / len(treatment)
+    )
+
+    z_crit = stats.norm.ppf(1 - alpha / 2)
+
+    ci_standard = (
+        diff_standard - z_crit * se_standard,
+        diff_standard + z_crit * se_standard
+    )
+    ci_cuped = (
+        diff_cuped - z_crit * se_cuped,
+        diff_cuped + z_crit * se_cuped
+    )
+
+    # ── Print report ─────────────────────────────────────────
+    print("=" * 55)
+    print("CUPED VARIANCE REDUCTION REPORT")
+    print("=" * 55)
+    print(f"\nPre-experiment covariate: historical_revenue_30d")
+    print(f"Theta (regression coefficient): {theta:.6f}")
+    print(f"  → Each ₹1 of historical revenue predicts")
+    print(f"    {theta*100:.4f}pp change in conversion rate")
+
+    print(f"\n{'─'*45}")
+    print(f"{'Metric':<35} {'Standard':>8} {'CUPED':>8}")
+    print(f"{'─'*45}")
+    print(f"{'Control conversion':<35} "
+          f"{conv_control:>8.4f} "
+          f"{conv_control_cuped:>8.4f}")
+    print(f"{'Treatment conversion':<35} "
+          f"{conv_treatment:>8.4f} "
+          f"{conv_treatment_cuped:>8.4f}")
+    print(f"{'Metric variance':<35} "
+          f"{var_standard:>8.6f} "
+          f"{var_cuped:>8.6f}")
+    print(f"{'P-value':<35} "
+          f"{p_standard:>8.4f} "
+          f"{p_cuped:>8.4f}")
+    print(f"{'95% CI lower (pp)':<35} "
+          f"{ci_standard[0]*100:>8.3f} "
+          f"{ci_cuped[0]*100:>8.3f}")
+    print(f"{'95% CI upper (pp)':<35} "
+          f"{ci_standard[1]*100:>8.3f} "
+          f"{ci_cuped[1]*100:>8.3f}")
+    print(f"{'─'*45}")
+    print(f"\nVariance reduction: "
+          f"{variance_reduction*100:.1f}%")
+
+    ci_width_standard = (
+        ci_standard[1] - ci_standard[0]
+    ) * 100
+    ci_width_cuped = (
+        ci_cuped[1] - ci_cuped[0]
+    ) * 100
+    ci_improvement = (
+        (ci_width_standard - ci_width_cuped) /
+        ci_width_standard
+    )
+
+    print(f"CI width (standard): {ci_width_standard:.3f}pp")
+    print(f"CI width (CUPED):    {ci_width_cuped:.3f}pp")
+    print(f"CI narrowing:        "
+          f"{ci_improvement*100:.1f}%")
+
+    print(f"\nBusiness interpretation:")
+    print(f"  CUPED reduced variance by "
+          f"{variance_reduction*100:.1f}%, producing")
+    print(f"  {ci_improvement*100:.1f}% narrower confidence "
+          f"intervals.")
+    print(f"  This means you could detect the same effect")
+    print(f"  with fewer users — or detect smaller effects")
+    print(f"  with the same {len(df):,} users.")
+    print("=" * 55)
+
+    return {
+        "theta":               round(theta, 6),
+        "variance_standard":   round(var_standard, 6),
+        "variance_cuped":      round(var_cuped, 6),
+        "variance_reduction":  round(variance_reduction, 4),
+        "p_standard":          round(p_standard, 4),
+        "p_cuped":             round(p_cuped, 4),
+        "ci_width_standard":   round(ci_width_standard, 4),
+        "ci_width_cuped":      round(ci_width_cuped, 4)
+    }
+
+
 if __name__ == "__main__":
     conn = get_connection()
     srm_results       = check_srm(conn)
@@ -721,4 +909,6 @@ if __name__ == "__main__":
     inference_results = run_inference(conn)
     print()
     peeking_results   = demonstrate_peeking(conn)
+    print()
+    cuped_results     = run_cuped(conn)
     conn.close()
