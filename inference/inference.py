@@ -589,6 +589,127 @@ def run_inference(conn, experiment_id="EXP_001",
     }
 
 
+def demonstrate_peeking(conn, experiment_id="EXP_001",
+                         alpha=0.05, n_simulations=10000):
+    """
+    Demonstrates how peeking at experiment results daily
+    inflates false positive rate far beyond nominal alpha.
+    
+    Simulates experiments under H0 (no true effect) and
+    shows how often peeking leads to incorrect rejection.
+    
+    This is why sequential testing methods exist —
+    used at Optimizely, Booking.com, and Netflix.
+    """
+    from statsmodels.stats.proportion import proportions_ztest
+
+    print("=" * 55)
+    print("PEEKING PROBLEM DEMONSTRATION")
+    print("=" * 55)
+    print(f"\nSimulating {n_simulations:,} experiments")
+    print(f"where H0 is TRUE (no real effect)")
+    print(f"Nominal α = {alpha}")
+    print(f"Experiment duration: 14 days")
+
+    # ── Simulation parameters ────────────────────────────────
+    # Based on your actual experiment parameters
+    true_conversion_rate = 0.027  # pooled rate, H0 true
+    daily_users_per_group = 75    # ~1050 users / 14 days
+
+    false_positive_single  = 0    # look only at Day 14
+    false_positive_peeking = 0    # look every day
+
+    np.random.seed(42)
+
+    for _ in range(n_simulations):
+        # Simulate 14 days of data under H0
+        # (same true rate for both groups)
+        control_daily   = []
+        treatment_daily = []
+
+        for day in range(1, 15):
+            control_daily.append(
+                np.random.binomial(
+                    daily_users_per_group,
+                    true_conversion_rate
+                )
+            )
+            treatment_daily.append(
+                np.random.binomial(
+                    daily_users_per_group,
+                    true_conversion_rate
+                )
+            )
+
+        # ── Single look at Day 14 ────────────────────────────
+        total_control   = sum(control_daily)
+        total_treatment = sum(treatment_daily)
+        n_total         = daily_users_per_group * 14
+
+        count = np.array([total_treatment, total_control])
+        nobs  = np.array([n_total, n_total])
+        _, p  = proportions_ztest(count, nobs)
+
+        if p < alpha:
+            false_positive_single += 1
+
+        # ── Peeking — check every day ────────────────────────
+        peeked_significant = False
+        cumulative_control   = 0
+        cumulative_treatment = 0
+
+        for day in range(14):
+            cumulative_control   += control_daily[day]
+            cumulative_treatment += treatment_daily[day]
+            n_so_far = daily_users_per_group * (day + 1)
+
+            # Need at least 5 conversions to run test
+            if (cumulative_control < 5 or
+                    cumulative_treatment < 5):
+                continue
+
+            count_d = np.array([
+                cumulative_treatment, cumulative_control
+            ])
+            nobs_d  = np.array([n_so_far, n_so_far])
+            _, p_d  = proportions_ztest(count_d, nobs_d)
+
+            if p_d < alpha:
+                peeked_significant = True
+                break
+
+        if peeked_significant:
+            false_positive_peeking += 1
+
+    # ── Results ──────────────────────────────────────────────
+    fpr_single  = false_positive_single  / n_simulations
+    fpr_peeking = false_positive_peeking / n_simulations
+
+    print(f"\nResults (H0 true — no real effect exists):")
+    print(f"{'─'*45}")
+    print(f"Single look at Day 14:")
+    print(f"  False positive rate: {fpr_single*100:.1f}%")
+    print(f"  (Expected: ~{alpha*100:.0f}%)")
+    print(f"\nPeeking daily (stop when p<{alpha}):")
+    print(f"  False positive rate: {fpr_peeking*100:.1f}%")
+    print(f"  (Expected: ~{alpha*100:.0f}%, "
+          f"Actual: {fpr_peeking*100:.1f}%)")
+    print(f"\nPeeking inflates false positive rate by "
+          f"{fpr_peeking/fpr_single:.1f}x")
+    print(f"From {fpr_single*100:.1f}% → "
+          f"{fpr_peeking*100:.1f}%")
+    print(f"\nThis is why Optimizely, Netflix, and")
+    print(f"Booking.com use sequential testing methods")
+    print(f"that mathematically correct for multiple looks.")
+    print("=" * 55)
+
+    return {
+        "fpr_single":        round(fpr_single, 4),
+        "fpr_peeking":       round(fpr_peeking, 4),
+        "inflation_factor":  round(fpr_peeking/fpr_single, 2),
+        "n_simulations":     n_simulations
+    }
+
 if __name__ == "__main__":
     conn = get_connection()
     srm_results       = check_srm(conn)
@@ -598,4 +719,6 @@ if __name__ == "__main__":
     guardrail_results = check_guardrails(conn)
     print()
     inference_results = run_inference(conn)
+    print()
+    peeking_results   = demonstrate_peeking(conn)
     conn.close()
