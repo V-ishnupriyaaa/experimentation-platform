@@ -438,12 +438,164 @@ def check_guardrails(conn, experiment_id="EXP_001",
 
     return guardrail_results
 
+def run_inference(conn, experiment_id="EXP_001",
+                  alpha=0.05, mde=0.005):
+    """
+    Primary metric statistical inference.
+    Tests conversion rate difference between control
+    and treatment using two-proportion z-test.
+    
+    Reports p-value, confidence interval, effect size,
+    and recommendation — always contextualised against
+    Phase 3 validation warnings.
+    """
+    from statsmodels.stats.proportion import (
+        proportions_ztest, proportion_confint
+    )
+
+    df_assignments = pd.read_sql(
+        f"SELECT * FROM assignments "
+        f"WHERE experiment_id = '{experiment_id}'",
+        conn
+    )
+    df_events = pd.read_sql(
+        f"SELECT * FROM events "
+        f"WHERE experiment_id = '{experiment_id}' "
+        f"AND event_type = 'purchase'",
+        conn
+    )
+
+    # ── Build conversion flag per user ───────────────────────
+    df_all = df_assignments[["user_id", "variant"]].copy()
+    df_all["purchased"] = df_all["user_id"].isin(
+        df_events["user_id"]
+    ).astype(int)
+
+    control   = df_all[df_all["variant"] == "control"]
+    treatment = df_all[df_all["variant"] == "treatment"]
+
+    n_control      = len(control)
+    n_treatment    = len(treatment)
+    conv_control   = control["purchased"].mean()
+    conv_treatment = treatment["purchased"].mean()
+
+    purchases_control   = control["purchased"].sum()
+    purchases_treatment = treatment["purchased"].sum()
+
+    # ── Two-proportion z-test ────────────────────────────────
+    count = np.array([purchases_treatment, purchases_control])
+    nobs  = np.array([n_treatment, n_control])
+    z_stat, p_value = proportions_ztest(count, nobs)
+
+    # ── Confidence interval for treatment rate ───────────────
+    ci_low, ci_high = proportion_confint(
+        purchases_treatment, n_treatment,
+        alpha=alpha, method="normal"
+    )
+
+    # ── Relative lift ────────────────────────────────────────
+    relative_lift = (
+        (conv_treatment - conv_control) / conv_control
+    )
+
+    # ── Effect size (Cohen's h for proportions) ──────────────
+    cohens_h = (
+        2 * np.arcsin(np.sqrt(conv_treatment)) -
+        2 * np.arcsin(np.sqrt(conv_control))
+    )
+
+    # ── Confidence interval on lift ──────────────────────────
+    se_diff = np.sqrt(
+        conv_control * (1 - conv_control) / n_control +
+        conv_treatment * (1 - conv_treatment) / n_treatment
+    )
+    z_critical = stats.norm.ppf(1 - alpha / 2)
+    diff = conv_treatment - conv_control
+    ci_diff_low  = diff - z_critical * se_diff
+    ci_diff_high = diff + z_critical * se_diff
+
+    # ── Print report ─────────────────────────────────────────
+    print("=" * 55)
+    print("PRIMARY METRIC INFERENCE REPORT")
+    print("=" * 55)
+    print(f"\nMetric: Conversion Rate")
+    print(f"Test:   Two-proportion z-test (two-sided)")
+    print(f"\nControl:   {conv_control:.4f} "
+          f"({purchases_control}/{n_control} users)")
+    print(f"Treatment: {conv_treatment:.4f} "
+          f"({purchases_treatment}/{n_treatment} users)")
+    print(f"\nAbsolute lift:  {diff*100:+.3f} pp")
+    print(f"Relative lift:  {relative_lift*100:+.2f}%")
+    print(f"Cohen's h:      {cohens_h:.4f}")
+    print(f"\n95% CI on lift: "
+          f"[{ci_diff_low*100:.3f}pp, "
+          f"{ci_diff_high*100:.3f}pp]")
+    print(f"Z-statistic:    {z_stat:.4f}")
+    print(f"P-value:        {p_value:.4f}")
+
+    significant = p_value < alpha
+    print(f"\nStatistically significant "
+          f"(α={alpha}): {significant}")
+
+    # ── Contextualised interpretation ────────────────────────
+    print("\n" + "─" * 55)
+    print("CONTEXTUALISED INTERPRETATION")
+    print("─" * 55)
+
+    if significant and diff > 0:
+        raw_recommendation = "SHIP"
+    elif significant and diff < 0:
+        raw_recommendation = "DO NOT SHIP"
+    else:
+        raw_recommendation = "INCONCLUSIVE"
+
+    print(f"Raw statistical result: {raw_recommendation}")
+    print(
+        f"\nIMPORTANT CAVEATS (from Phase 3 validation):"
+    )
+    print(f"  • Achieved power: 10.5% (planned: 80%)")
+    print(f"  • Experiment needs ~32,604 users "
+          f"(actual: {n_control + n_treatment:,})")
+    print(f"  • Retention rate shows -18.62% directional")
+    print(f"    drop (WARNING — unconfirmed due to low power)")
+    print(
+        f"\nFinal recommendation: EXTEND OR RERUN"
+    )
+    print(
+        f"  Statistical result alone is unreliable at"
+    )
+    print(
+        f"  10.5% power. Retention warning unresolved."
+    )
+    print(
+        f"  Collect more data before shipping decision."
+    )
+    print("=" * 55)
+
+    return {
+        "n_control":          n_control,
+        "n_treatment":        n_treatment,
+        "conv_control":       round(conv_control, 4),
+        "conv_treatment":     round(conv_treatment, 4),
+        "absolute_lift":      round(diff, 6),
+        "relative_lift":      round(relative_lift, 4),
+        "cohens_h":           round(cohens_h, 4),
+        "ci_diff_low":        round(ci_diff_low, 6),
+        "ci_diff_high":       round(ci_diff_high, 6),
+        "z_statistic":        round(z_stat, 4),
+        "p_value":            round(p_value, 4),
+        "significant":        significant,
+        "raw_recommendation": raw_recommendation
+    }
+
 
 if __name__ == "__main__":
     conn = get_connection()
-    srm_results    = check_srm(conn)
+    srm_results       = check_srm(conn)
     print()
-    power_results  = check_power(conn)
+    power_results     = check_power(conn)
     print()
     guardrail_results = check_guardrails(conn)
+    print()
+    inference_results = run_inference(conn)
     conn.close()
