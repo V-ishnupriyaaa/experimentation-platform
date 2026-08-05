@@ -551,13 +551,9 @@ def run_inference(conn, experiment_id="EXP_001",
 
     print(f"Raw statistical result: {raw_recommendation}")
     print(
-        f"\nIMPORTANT CAVEATS (from Phase 3 validation):"
-    )
-    print(f"  • Achieved power: 10.5% (planned: 80%)")
-    print(f"  • Experiment needs ~32,604 users "
-          f"(actual: {n_control + n_treatment:,})")
-    print(f"  • Retention rate shows -18.62% directional")
-    print(f"    drop (WARNING — unconfirmed due to low power)")
+        f"\nIMPORTANT CAVEATS (from Phase 3 validation):")
+    print(f"  • See power analysis and guardrail reports above")
+    print(f"  • Actual users: {n_control + n_treatment:,}")
     print(
         f"\nFinal recommendation: EXTEND OR RERUN"
     )
