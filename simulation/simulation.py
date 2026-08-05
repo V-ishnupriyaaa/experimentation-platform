@@ -493,9 +493,15 @@ def generate_events(conn, df_users, df_assignments,
 if __name__ == "__main__":
     conn = get_connection()
     create_tables(conn)
-    df_users = generate_users(conn)
+    
+    # Large-scale simulation — 50,000 users
+    df_users = generate_users(conn, n_users=50000, seed=99)
     print(df_users["spend_tier"].value_counts())
     experiment = generate_experiment(conn)
-    df_assignments = generate_assignments(conn, df_users)
-    df_events = generate_events(conn, df_users, df_assignments)
+    df_assignments = generate_assignments(
+        conn, df_users, seed=99
+    )
+    df_events = generate_events(
+        conn, df_users, df_assignments, seed=99
+    )
     conn.close()
