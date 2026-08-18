@@ -122,32 +122,36 @@ Key finding: the platform independently produced p=0.1899 (DO NOT SHIP) — cons
 
 ---
 
-## Project Structure
+### Project Structure
+
+```
 experimentation_platform/
 │
 ├── simulation/
-│ └── simulation.py # Data generation — users, assignments, events
+│   └── simulation.py          # Data generation
 │
 ├── inference/
-│ └── inference.py # SRM, power analysis, guardrails, z-test, CUPED
+│   └── inference.py           # SRM, power analysis,
+│                              # guardrails, z-test, CUPED
 │
 ├── decision/
-│ ├── decision.py # Decision integration + financial impact
-│ └── genai_layer.py # Production GenAI pipeline (requires API key)
+│   ├── decision.py            # Decision integration
+│   └── genai_layer.py         # Production GenAI pipeline
+│                              # (requires API key)
 │
 ├── notebooks/
-│ ├── EDA.ipynb # Exploratory analysis — zero-inflation, Simpson's Paradox
-│ └── real_dataset_validation.py # Kaggle dataset validation
+│   ├── EDA.ipynb              # Exploratory analysis
+│   └── real_dataset_validation.py
 │
 ├── data/
-│ ├── experiments.db # SQLite database (5 tables)
-│ └── real_dataset/
-│ └── ab_data.csv # Kaggle A/B test dataset
+│   ├── experiments.db         # SQLite database (5 tables)
+│   └── real_dataset/
+│       └── ab_data.csv        # Kaggle A/B test dataset
 │
-├── app.py # Streamlit interactive demo
+├── app.py                     # Streamlit interactive demo
 ├── requirements.txt
 └── README.md
-
+```
 
 ---
 
