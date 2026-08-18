@@ -183,17 +183,6 @@ Python, SQLite, pandas, numpy, scipy, statsmodels, matplotlib, seaborn, Streamli
 
 ---
 
-
-## Background
-
-Built during MSc Data Analytics (Christ University, 
-Bangalore, 2026). Design inspired by published 
-experimentation approaches from Airbnb, Microsoft, 
-Netflix, and Booking.com. Simulation parameters 
-grounded in 2026 public industry benchmarks.
-
----
-
 ## Key References
 
 ## References and Inspiration
