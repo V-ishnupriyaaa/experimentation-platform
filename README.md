@@ -179,7 +179,6 @@ Python, SQLite, pandas, numpy, scipy, statsmodels, matplotlib, seaborn, Streamli
 
 ---
 
-## Background
 
 ## Background
 
