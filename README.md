@@ -4,6 +4,7 @@
 > **not just "is this result significant?" but "should we ship it — and what does getting that decision wrong cost?"**
 
 ---
+The same decision framework applies directly to any merchant-facing experiment on a payments platform — whether testing a new checkout flow to reduce drop-off, a pricing change to improve conversion, or a risk policy intervention to reduce fraud without hurting good merchants. P-values don't answer whether to ship these changes. This platform does.
 
 ## The Business Problem
 
