@@ -59,8 +59,8 @@ This one can.
 
 ## Platform Architecture
 Simulation Layer → Validation Layer → Inference Engine → Decision Layer
-───────────────── ────────────────── ───────────────── ──────────────
-simulation.py inference.py inference.py decision.py
+
+simulation.py → inference.py → inference.py → decision.py
 
 5-table SQLite schema • SRM detection • Two-proportion z-test • 4-state logic
 Pareto user distribution (chi-square test) • Post-hoc power analysis • Financial impact
