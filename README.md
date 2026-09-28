@@ -189,9 +189,9 @@ Python, SQLite, pandas, numpy, scipy, statsmodels, matplotlib, seaborn, Streamli
 ## References and Inspiration
 
 - Kohavi, R. et al. — *Trustworthy Online Controlled 
-  Experiments* (Cambridge University Press) — general 
+  Experiments*  — general 
   framework for experiment design and SRM detection
-- Deng, A. et al. (Microsoft Research) — *Improving the 
+- Deng, A. et al.  — *Improving the 
   Sensitivity of Online Controlled Experiments by Utilizing 
   Pre-Experiment Data* — CUPED implementation
 - Optimizely Engineering Blog — sequential testing and 
