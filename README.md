@@ -221,4 +221,4 @@ CUPED typically produces 10–50% variance reduction.
 **Scale:** The platform is designed for single-experiment 
 analysis. Production experimentation platforms handle 
 thousands of concurrent experiments with interaction 
-effect detection — not implemented here.
+effect detection not implemented here.
