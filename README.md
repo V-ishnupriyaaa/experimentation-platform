@@ -77,10 +77,10 @@ effects by spend tier • Power analysis • Confidence intervals
 Simple coin-flip randomisation risks Simpson's Paradox ,heavy spenders accidentally concentrated in one group can create a fake effect. Stratifying by tier guarantees each segment splits 50/50, eliminating this source of distortion before the experiment runs.
 
 **Dual metric approach for zero-inflated revenue**
-97.3% of users had zero revenue during the experiment. A t-test on this distribution violates normality assumptions. The platform uses conversion rate (z-test on binary outcome) and revenue-per-purchaser (t-test on non-zero values only) separately — with survivorship bias explicitly documented for the second metric.
+97.3% of users had zero revenue during the experiment. A t-test on this distribution violates normality assumptions. The platform uses conversion rate (z-test on binary outcome) and revenue-per-purchaser (t-test on non-zero values only) separately with survivorship bias explicitly documented for the second metric.
 
 **Three-state guardrail system**
-Standard guardrail systems flag PASSED or VIOLATED. This platform adds a third state — WARNING : for cases where a threshold is breached but statistical significance isn't reached due to low power. Silently passing an 18.6% retention drop as "clean" would be dangerous; flagging it as an unconfirmed warning is honest.
+Standard guardrail systems flag PASSED or VIOLATED. This platform adds a third state WARNING : for cases where a threshold is breached but statistical significance isn't reached due to low power. Silently passing an 18.6% retention drop as "clean" would be dangerous; flagging it as an unconfirmed warning is honest.
 
 **Post-hoc power analysis before inference**
 The platform calculates achieved power using actual sample size and observed variance , not planned assumptions. When achieved power is below 80%, the decision engine automatically shifts toward EXTEND regardless of the p-value, because an inconclusive result from an underpowered experiment means "we don't know yet," not "it doesn't work."
