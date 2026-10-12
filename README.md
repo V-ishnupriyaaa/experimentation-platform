@@ -26,7 +26,7 @@ Most experimentation tools stop at a p-value. This platform
 treats statistical output as the beginning of a decision 
 process, not the end.
 
-The validation layer runs before any inference — checking 
+The validation layer runs before any inference checking 
 randomisation integrity (SRM), statistical power, and 
 guardrail metrics. Only when all three pass does the 
 platform proceed to inference and recommendation.
