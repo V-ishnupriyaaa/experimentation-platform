@@ -188,15 +188,15 @@ Python, SQLite, pandas, numpy, scipy, statsmodels, matplotlib, seaborn, Streamli
 
 ## References and Inspiration
 
-- Kohavi, R. et al. — *Trustworthy Online Controlled 
-  Experiments*  — general 
+- Kohavi, R. et al. *Trustworthy Online Controlled 
+  Experiments*  (general)
   framework for experiment design and SRM detection
-- Deng, A. et al.  — *Improving the 
+- Deng, A. et al.  *Improving the 
   Sensitivity of Online Controlled Experiments by Utilizing 
-  Pre-Experiment Data* — CUPED implementation
-- Optimizely Engineering Blog — sequential testing and 
-  the peeking problem
-- Dynamic Yield / Contentsquare 2026 Benchmarks — 
+  Pre-Experiment Data* (CUPED implementation)
+- Optimizely Engineering Blog  (sequential testing and 
+  the peeking problem)
+- Dynamic Yield / Contentsquare 2026 Benchmarks 
   e-commerce conversion rate parameters for simulation
 
 ## Limitations
