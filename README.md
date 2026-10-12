@@ -1,10 +1,10 @@
 # Intelligent Experimentation & Decision Platform
 
 > Built to answer one question most A/B testing tools ignore:
-> **not just "is this result significant?" but "should we ship it — and what does getting that decision wrong cost?"**
+> **not just "is this result significant?" but "should we ship it and what does getting that decision wrong cost?"**
 
 ---
-The same decision framework applies directly to any merchant-facing experiment on a payments platform — whether testing a new checkout flow to reduce drop-off, a pricing change to improve conversion, or a risk policy intervention to reduce fraud without hurting good merchants. P-values don't answer whether to ship these changes. This platform does.
+The same decision framework applies directly to any merchant-facing experiment on a payments platform , whether testing a new checkout flow to reduce drop-off, a pricing change to improve conversion, or a risk policy intervention to reduce fraud without hurting good merchants. P-values don't answer whether to ship these changes. This platform does.
 
 ## The Business Problem
 
@@ -16,7 +16,7 @@ But a p-value doesn't tell you:
 - Whether you had enough data to trust the result at all
 - What the financial cost of a wrong decision looks like
 
-This platform answers all four — before recommending ship, extend, or do not ship.
+This platform answers all four, before recommending ship, extend, or do not ship.
 
 ---
 
@@ -32,15 +32,15 @@ guardrail metrics. Only when all three pass does the
 platform proceed to inference and recommendation.
 
 The decision layer translates statistical output into one 
-of four structured recommendations — SHIP, EXTEND, 
-DO NOT SHIP, or INVALIDATED — each with a plain-English 
+of four structured recommendations : SHIP, EXTEND, 
+DO NOT SHIP, or INVALIDATED each with a plain-English 
 reason and a financial impact range.
 
 ---
 
 ## Three Experiments, Three Recommendations
 
-The platform was tested across three scenarios — same statistical engine, different data:
+The platform was tested across three scenarios : same statistical engine, different data:
 
 | Experiment | Users | Achieved Power | P-value | Recommendation | Reason |
 |---|---|---|---|---|---|
@@ -74,19 +74,19 @@ effects by spend tier • Power analysis • Confidence intervals
 ## Key Technical Decisions — And Why
 
 **Stratified randomisation by spend tier**
-Simple coin-flip randomisation risks Simpson's Paradox — heavy spenders accidentally concentrated in one group can create a fake effect. Stratifying by tier guarantees each segment splits 50/50, eliminating this source of distortion before the experiment runs.
+Simple coin-flip randomisation risks Simpson's Paradox ,heavy spenders accidentally concentrated in one group can create a fake effect. Stratifying by tier guarantees each segment splits 50/50, eliminating this source of distortion before the experiment runs.
 
 **Dual metric approach for zero-inflated revenue**
 97.3% of users had zero revenue during the experiment. A t-test on this distribution violates normality assumptions. The platform uses conversion rate (z-test on binary outcome) and revenue-per-purchaser (t-test on non-zero values only) separately — with survivorship bias explicitly documented for the second metric.
 
 **Three-state guardrail system**
-Standard guardrail systems flag PASSED or VIOLATED. This platform adds a third state — WARNING — for cases where a threshold is breached but statistical significance isn't reached due to low power. Silently passing an 18.6% retention drop as "clean" would be dangerous; flagging it as an unconfirmed warning is honest.
+Standard guardrail systems flag PASSED or VIOLATED. This platform adds a third state — WARNING : for cases where a threshold is breached but statistical significance isn't reached due to low power. Silently passing an 18.6% retention drop as "clean" would be dangerous; flagging it as an unconfirmed warning is honest.
 
 **Post-hoc power analysis before inference**
-The platform calculates achieved power using actual sample size and observed variance — not planned assumptions. When achieved power is below 80%, the decision engine automatically shifts toward EXTEND regardless of the p-value, because an inconclusive result from an underpowered experiment means "we don't know yet," not "it doesn't work."
+The platform calculates achieved power using actual sample size and observed variance , not planned assumptions. When achieved power is below 80%, the decision engine automatically shifts toward EXTEND regardless of the p-value, because an inconclusive result from an underpowered experiment means "we don't know yet," not "it doesn't work."
 
 **Confidence interval-based financial impact**
-The platform reports annual revenue impact at the lower and upper CI bounds — not just the point estimate. An experiment showing ₹-9.99 crore to ₹+2.05 crore looks very different from one showing ₹+1.19 crore to ₹+3.64 crore, even if both have similar p-values. The CI range is what drives the ship/extend decision.
+The platform reports annual revenue impact at the lower and upper CI bounds, not just the point estimate. An experiment showing ₹-9.99 crore to ₹+2.05 crore looks very different from one showing ₹+1.19 crore to ₹+3.64 crore, even if both have similar p-values. The CI range is what drives the ship/extend decision.
 
 ---
 
@@ -94,7 +94,7 @@ The platform reports annual revenue impact at the lower and upper CI bounds — 
 
 Before building the inference engine, exploratory analysis on the simulated data revealed:
 
-- **97.3% zero-inflation** in revenue per user — confirmed the dual metric approach was statistically necessary, not just a design preference
+- **97.3% zero-inflation** in revenue per user confirmed the dual metric approach was statistically necessary, not just a design preference
 - **Simpson's Paradox** independently discovered: treatment won in 3 of 4 spend tiers but lost in the blended aggregate due to sampling variability in the largest segment. This finding directly shaped the platform's requirement to always report segment-level results alongside aggregate outputs.
 - **Funnel shape validated**: 2,100 searches → 1,042 clicks (49.6%) → 256 cart additions (12.2%) → 56 purchases (2.7%) — consistent with 2026 industry benchmarks
 
@@ -119,7 +119,7 @@ Every statistical component was reasoned through and implemented without black-b
 
 The platform was run on a real public A/B test dataset (Kaggle, 294,478 rows, e-commerce landing page test) to confirm it generalises beyond simulation.
 
-Key finding: the platform independently produced p=0.1899 (DO NOT SHIP) — consistent with published community analyses of the same dataset. The real data also revealed 3,893 group/page mismatches (users assigned to one group but served the wrong page) — a real data quality issue absent from clean simulated data that the platform's cleaning layer detected and removed before analysis.
+Key finding: the platform independently produced p=0.1899 (DO NOT SHIP) consistent with published community analyses of the same dataset. The real data also revealed 3,893 group/page mismatches (users assigned to one group but served the wrong page) — a real data quality issue absent from clean simulated data that the platform's cleaning layer detected and removed before analysis.
 
 ---
 
