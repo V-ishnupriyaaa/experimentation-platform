@@ -96,7 +96,7 @@ Before building the inference engine, exploratory analysis on the simulated data
 
 - **97.3% zero-inflation** in revenue per user confirmed the dual metric approach was statistically necessary, not just a design preference
 - **Simpson's Paradox** independently discovered: treatment won in 3 of 4 spend tiers but lost in the blended aggregate due to sampling variability in the largest segment. This finding directly shaped the platform's requirement to always report segment-level results alongside aggregate outputs.
-- **Funnel shape validated**: 2,100 searches → 1,042 clicks (49.6%) → 256 cart additions (12.2%) → 56 purchases (2.7%) — consistent with 2026 industry benchmarks
+- **Funnel shape validated**: 2,100 searches → 1,042 clicks (49.6%) → 256 cart additions (12.2%) → 56 purchases (2.7%) consistent with 2026 industry benchmarks
 
 ---
 
@@ -119,7 +119,7 @@ Every statistical component was reasoned through and implemented without black-b
 
 The platform was run on a real public A/B test dataset (Kaggle, 294,478 rows, e-commerce landing page test) to confirm it generalises beyond simulation.
 
-Key finding: the platform independently produced p=0.1899 (DO NOT SHIP) consistent with published community analyses of the same dataset. The real data also revealed 3,893 group/page mismatches (users assigned to one group but served the wrong page) — a real data quality issue absent from clean simulated data that the platform's cleaning layer detected and removed before analysis.
+Key finding: the platform independently produced p=0.1899 (DO NOT SHIP) consistent with published community analyses of the same dataset. The real data also revealed 3,893 group/page mismatches (users assigned to one group but served the wrong page) a real data quality issue absent from clean simulated data that the platform's cleaning layer detected and removed before analysis.
 
 ---
 
